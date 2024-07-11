@@ -16,6 +16,12 @@ app.get("/", (req: Request, res: Response) => {
   });
 });
 
+app.get("/health", (req: Request, res: Response) => {
+  res.send({
+    status: "OK"
+  });
+});
+
 app.post("/identify", async (req: Request, res: Response) => {
   const { email, phoneNumber }: { email: String, phoneNumber: String } = req.body
 

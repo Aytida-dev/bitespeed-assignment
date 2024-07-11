@@ -5,12 +5,12 @@
 
 # Bitespeed Backend Assignment
 
-## hosted at: https://bitespeed-backend-sql-task.onrender.com/
+## hosted at: https://bitespeed-assignment-3d40.onrender.com/
 
-## exposed endpoint : https://bitespeed-backend-sql-task.onrender.com/identify
+## exposed endpoint : https://bitespeed-assignment-3d40.onrender.com/identify
 
 ### By Aditya Raj
 
-### Email: "aytida.dev@gmail.com"
+### Email: "cicada.raj@gmail.com"
 
 ### LinkedIn: "https://www.linkedin.com/in/rayzr"
