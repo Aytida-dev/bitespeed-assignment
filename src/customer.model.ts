@@ -2,7 +2,6 @@ import {
   QueryError,
   QueryResult,
   ResultSetHeader,
-  RowDataPacket,
 } from "mysql2";
 import sql from "./db";
 import { Customer } from "./types";
@@ -45,23 +44,28 @@ CustomerModel.getSpecificCustomer = (email?: String, phoneNumber?: String): Prom
 
 CustomerModel.getAllCustomer = (customer: Customer): Promise<Customer[]> => {
   return new Promise((resolve, reject) => {
+    let requiredId: Number
     if (customer.linkPrecedence === "secondary") {
-      const query = `
-        SELECT * FROM customer 
-        WHERE id = ? OR linkedId = ?
-        ORDER BY linkPrecedence
-      `
-
-      sql.query(query, [customer.linkedId], (err: QueryError, res: QueryResult) => {
-        if (err) {
-          reject(err);
-          console.log(err);
-          return;
-        }
-
-        resolve(res as Customer[])
-      })
+      requiredId = customer.linkedId
     }
+    else {
+      requiredId = customer.id
+    }
+    const query = `
+      SELECT * FROM customer 
+      WHERE id = ? OR linkedId = ?
+      ORDER BY linkPrecedence
+    `
+
+    sql.query(query, [requiredId, requiredId], (err: QueryError, res: QueryResult) => {
+      if (err) {
+        reject(err);
+        console.log(err);
+        return;
+      }
+
+      resolve(res as Customer[])
+    })
   })
 }
 
@@ -150,7 +154,7 @@ CustomerModel.joinPrimary = (primary1: Customer, primary2: Customer): Promise<St
 
     const query = `
     UPDATE customer
-    SET linkedId = ? , linkedPrecedence = ? updatedAt = ?
+    SET linkedId = ? , linkPrecedence = ? , updatedAt = ?
     WHERE linkedId = ? OR id = ?
     `
 

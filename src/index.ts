@@ -18,6 +18,14 @@ app.get("/", (req: Request, res: Response) => {
 
 app.post("/identify", async (req: Request, res: Response) => {
   const { email, phoneNumber }: { email: String, phoneNumber: String } = req.body
+
+  if ((!email && !phoneNumber) || (phoneNumber && typeof phoneNumber !== "string")) {
+    res.status(400).send({
+      message: "Email or phone number is required and number should be a string"
+    })
+    return
+  }
+
   try {
 
     let customersArr: Customer[] = []
@@ -29,10 +37,13 @@ app.post("/identify", async (req: Request, res: Response) => {
       customer.linkedId = null
       customer.linkPrecedence = "primary"
       customer.createdAt = new Date()
+      customer.updatedAt = new Date()
 
       customer.id = await CustomerModel.create(customer)
 
       customersArr.push(customer)
+
+      console.log("Creating new primary");
 
     }
     else if (data.length === 1) {
@@ -43,6 +54,7 @@ app.post("/identify", async (req: Request, res: Response) => {
         const newCustomer: Customer = new CustomerModel({} as Customer)
         newCustomer.createdAt = new Date()
         newCustomer.linkPrecedence = "secondary"
+        newCustomer.updatedAt = new Date()
 
         if (customer.email !== email) {
           newCustomer.email = email
@@ -52,13 +64,16 @@ app.post("/identify", async (req: Request, res: Response) => {
         }
 
         if (customer.linkPrecedence === "primary") {
-          customer.linkedId = customer.id
+          newCustomer.linkedId = customer.id
         }
         else {
-          customer.linkedId = customer.linkedId
+          newCustomer.linkedId = customer.linkedId
         }
 
         newCustomer.id = await CustomerModel.create(newCustomer)
+
+        console.log("Creating new secondary , data = 1");
+
       }
 
     }
@@ -68,53 +83,30 @@ app.post("/identify", async (req: Request, res: Response) => {
         secondary: []
       }
       const linkedIds: Set<Number> = new Set()
-      const newDataCheck = [0, 0]  //[email , phone]
 
       for (const customer of data) {
         formattedData[customer.linkPrecedence].push(customer)
         linkedIds.add(customer.linkedId ?? customer.id)
-
-        if (customer.email === email) {
-          newDataCheck[0]++
-        }
-        if (customer.phoneNumber === phoneNumber) {
-          newDataCheck[1]++
-        }
       }
 
-      //all same primary
-      if (linkedIds.size < 2 && formattedData.primary.length < 2) {
-        if (!newDataCheck[0]) {
-          const newCustomer: Customer = new CustomerModel({} as Customer)
-          newCustomer.createdAt = new Date()
-          newCustomer.linkPrecedence = "secondary"
-          newCustomer.email = email
+      //Different primaries
+      if (linkedIds.size > 1 || formattedData.primary.length > 1) {
 
-          newCustomer.linkedId = formattedData.primary.length ? formattedData.primary[0].id : formattedData.secondary[0].linkedId
+        console.log("Joining primaries");
+        const allCustomers = await Promise.all(formattedData.secondary.map((customer) => {
+          return CustomerModel.getPrimary(customer.linkedId)
+        }))
 
-          await CustomerModel.create(newCustomer)
-          return
-        }
-        else if (!newDataCheck[1]) {
-          const newCustomer: Customer = new CustomerModel({} as Customer)
-          newCustomer.createdAt = new Date()
-          newCustomer.linkPrecedence = "secondary"
-          newCustomer.phoneNumber = phoneNumber
+        let primary1 = formattedData.primary[0] ?? allCustomers[0]
+        let primary2 = formattedData.primary[1] ?? allCustomers[1] ?? allCustomers[0]
 
-          newCustomer.linkedId = formattedData.primary.length ? formattedData.primary[0].id : formattedData.secondary[0].linkedId
+        const [mainPrimary, secondaryPrimary] = chooseMergingPrimary(primary1, primary2, email)
 
-          await CustomerModel.create(newCustomer)
-          return
-        }
+
+        await CustomerModel.joinPrimary(mainPrimary, secondaryPrimary)
+        data[0] = mainPrimary
 
       }
-      else {
-        let primary1 = formattedData.primary[0] ?? await CustomerModel.getPrimary(formattedData.secondary[0].linkedId)
-        let primary2 = formattedData.primary[1] ?? await CustomerModel.getPrimary(formattedData.secondary[1].linkedId)
-
-        await CustomerModel.joinPrimary(primary1, primary2)
-      }
-
     }
 
     if (!customersArr.length) {
@@ -140,14 +132,36 @@ app.listen(PORT, () => {
 function responseFormatter(customers: Customer[]): ApiRes {
   const contact: Contact = {
     primaryContactId: customers[0].id,
-    email: [customers[0].email],
-    phoneNumbers: [customers[0].phoneNumber],
+    email: customers[0].email ? [customers[0].email] : [],
+    phoneNumbers: customers[0].phoneNumber ? [customers[0].phoneNumber] : [],
     secondaryContactIds: []
   }
 
   for (let i = 1; i < customers.length; i++) {
+    if (customers[i].email) {
+      contact.email.push(customers[i].email);
+    }
+
+    if (customers[i].phoneNumber) {
+      contact.phoneNumbers.push(customers[i].phoneNumber);
+    }
+
     contact.secondaryContactIds.push(customers[i].id);
   }
 
   return { contact }
+}
+
+function chooseMergingPrimary(primary1: Customer, primary2: Customer, email: String): Customer[] {
+  const result = []
+  if (primary1.email === email) {
+    result[0] = primary1
+    result[1] = primary2
+  }
+  else {
+    result[0] = primary2
+    result[1] = primary1
+  }
+
+  return result
 }
